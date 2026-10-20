@@ -1,0 +1,44 @@
+services:
+  blue:
+    build: ./app
+    image: blue-green-demo:v1
+    container_name: bg-proxy-blue
+    environment:
+      APP_VERSION: v1
+      APP_COLOR: blue
+    expose:
+      - "3000"
+    restart: unless-stopped
+    networks:
+      - bg-network
+
+  green:
+    build: ./app
+    image: blue-green-demo:v2
+    container_name: bg-proxy-green
+    environment:
+      APP_VERSION: v2
+      APP_COLOR: green
+    expose:
+      - "3000"
+    restart: unless-stopped
+    networks:
+      - bg-network
+
+  proxy:
+    image: nginx:alpine
+    container_name: bg-proxy
+    ports:
+      - "127.0.0.1:18080:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+    depends_on:
+      - blue
+      - green
+    restart: unless-stopped
+    networks:
+      - bg-network
+
+networks:
+  bg-network:
+    driver: bridge
