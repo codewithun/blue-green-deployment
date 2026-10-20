@@ -1,33 +1,46 @@
 # Blue-Green Deployment
 
-A containerized deployment project demonstrating the Blue-Green Deployment strategy using Docker Compose, Nginx, and Node.js.
+A hands-on implementation of the [roadmap.sh Blue-Green Deployment project](https://roadmap.sh/projects/blue-green-deployment), demonstrating how to run two application versions in separate Docker containers and switch traffic safely using Nginx.
 
-The project runs two application versions simultaneously and routes incoming traffic through Nginx. A deployment script switches traffic to the selected version after checking application health and validating the Nginx configuration.
+## Overview
+
+Blue-Green Deployment is a release strategy that runs two application environments simultaneously:
+
+- **Blue:** the current stable version (`v1`).
+- **Green:** the new application version (`v2`).
+
+The new version can be started and health-checked before traffic is switched to it. If a rollback is needed, traffic can be routed back to the previous version without stopping the application containers.
+
+This project implements the strategy locally using Docker Compose, Node.js, Express, and Nginx.
 
 ## Architecture
 
 ```text
-                 Client
-                   |
-                   v
-          Nginx Reverse Proxy
-          127.0.0.1:18080
-                   |
-             Traffic Routing
-              /          \
-             v            v
-       Blue (v1)       Green (v2)
-       Port 3000       Port 3000
+                  Client
+                    |
+                    v
+             Nginx Reverse Proxy
+             localhost:18080
+                    |
+             Traffic Switching
+                /       \
+               v         v
+          Blue (v1)   Green (v2)
+          Express     Express
+          Port 3000   Port 3000
 ```
 
-Both application containers run on a private Docker network. Only the Nginx proxy publishes a host port, bound to localhost.
+Both application containers run simultaneously on a Docker network. Nginx acts as the entry point and routes requests to the selected version.
+
+Only the Nginx proxy publishes a host port, bound to `127.0.0.1:18080`.
 
 ## Tech Stack
 
-- Node.js and Express
-- Docker and Docker Compose
-- Nginx reverse proxy
-- Bash deployment and rollback scripts
+- **Node.js & Express** — web application and health endpoint
+- **Docker** — containerized application versions
+- **Docker Compose** — multi-container orchestration
+- **Nginx** — reverse proxy and traffic switching
+- **Bash & Python 3** — deployment automation and configuration updates
 
 ## Project Structure
 
@@ -47,78 +60,84 @@ blue-green-deployment/
 
 ## Prerequisites
 
-- Docker Engine or Docker Desktop with Docker Compose
+- Docker with Docker Compose
+- Bash
+- Python 3
 - `curl`
-- Bash and Python 3 on the host
 
 ## Getting Started
 
-Clone the repository and enter the project directory:
+### 1. Clone the repository
 
 ```bash
 git clone <your-repository-url>
 cd blue-green-deployment
 ```
 
-Build and start the application containers:
+Replace `<your-repository-url>` with your GitHub repository URL.
+
+### 2. Start the application environments
 
 ```bash
 docker compose up -d --build
 ```
 
-Check container status:
+Check the container status:
 
 ```bash
 docker compose ps
 ```
 
-Open the application through the Nginx proxy:
+The Blue, Green, and Nginx containers should be running.
+
+### 3. Verify the active version
+
+The initial Nginx configuration routes traffic to Blue (`v1`).
 
 ```bash
 curl http://127.0.0.1:18080/
 ```
 
-The initial Nginx configuration routes traffic to Blue (v1).
+Expected response:
+
+```json
+{
+  "application": "blue-green-demo",
+  "version": "v1",
+  "color": "blue",
+  "status": "running"
+}
+```
+
+The response also includes a timestamp.
 
 ## Application Endpoints
 
-| Endpoint | Description |
-|---|---|
-| `/` | Returns application version, color, and status |
-| `/health` | Returns application health and version |
-| `/proxy-health` | Checks whether the Nginx proxy responds |
+| Endpoint        | Purpose                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| `/`             | Returns application version, color, status, and release information |
+| `/health`       | Reports application health and version                              |
+| `/proxy-health` | Checks whether the Nginx proxy responds                             |
 
-## Deploy a New Version
+## Deployment Workflow
 
-Deploy Green (v2):
+### 1. Deploy Green
+
+Run:
 
 ```bash
 ./deploy.sh green
 ```
 
-The deployment script:
+The script performs these steps:
 
-1. Checks the target application's health endpoint.
+1. Checks the target application's health.
 2. Saves the current Nginx configuration.
-3. Updates the upstream target.
+3. Updates the traffic destination.
 4. Validates the Nginx configuration.
 5. Reloads Nginx.
 6. Verifies the active application version.
-7. Restores the previous configuration if deployment fails.
-
-Verify the active version:
-
-```bash
-curl -s http://127.0.0.1:18080/
-```
-
-## Rollback
-
-Return traffic to Blue (v1):
-
-```bash
-./rollback.sh
-```
+7. Attempts to restore the previous configuration if deployment fails.
 
 Verify the result:
 
@@ -126,39 +145,59 @@ Verify the result:
 curl -s http://127.0.0.1:18080/
 ```
 
-The Blue and Green application containers remain running during traffic switching and rollback.
+The response should identify Green (`v2`) and include the `green-release` and `deployment-v2` fields.
 
-## Validation and Testing
+### 2. Roll Back to Blue
+
+Run:
+
+```bash
+./rollback.sh
+```
+
+The script routes traffic back to Blue (`v1`).
+
+Verify the result:
+
+```bash
+curl -s http://127.0.0.1:18080/
+```
+
+The response should identify Blue (`v1`).
+
+## Testing
 
 The following scenarios have been tested locally:
 
-- Blue (v1) and Green (v2) run simultaneously.
+- Blue and Green run as separate application containers.
 - Both application health endpoints respond successfully.
 - Nginx routes traffic to Blue and Green.
-- Deployment to Green succeeds.
-- Rollback to Blue succeeds.
+- Deployment from Blue to Green succeeds.
+- Rollback from Green to Blue succeeds.
 - Unsupported deployment targets are rejected.
-- An unavailable target fails its health check without changing the active route.
+- An unavailable target fails its health check before the traffic configuration changes.
+- The active version remains unchanged when the target health check fails.
 
-These are local functional tests, not a formal load test or a guarantee of zero downtime under every failure condition.
+These tests verify the deployment workflow's basic functionality. They are not formal load tests or proof of zero downtime under every failure condition.
 
-## Security and Scope
+## Scope and Limitations
 
-- The proxy is bound to `127.0.0.1:18080`, not exposed on all host interfaces.
-- Application containers communicate over a Docker network.
-- The current deployment scripts are designed for this local project setup.
-- Production deployment would require additional controls, such as automated integration tests, concurrency protection, monitoring, and a server-specific deployment configuration.
+This project focuses on the core Blue-Green Deployment workflow required by roadmap.sh.
 
-## Cleanup
+- Deployment and rollback are executed manually through local scripts.
+- The deployment scripts assume the existing Docker Compose container names and local project configuration.
+- CI/CD integration and production-server deployment have not been implemented.
+- Monitoring and production-grade observability are not included.
+- Configuration rollback is attempted when a deployment step fails, but this is not a guarantee against every possible failure.
 
-Stop the services created by this Compose project:
+## Future Improvements
 
-```bash
-docker compose down
-```
-
-This command removes the Compose containers and network but does not remove named volumes. It does not remove the separately created standalone test containers.
+- Automate deployment through a CI/CD pipeline.
+- Deploy the application to a remote server.
+- Add monitoring and deployment alerts.
+- Add automated integration tests.
+- Improve deployment locking and concurrent execution safety.
 
 ## License
 
-Choose a license before publishing this project publicly.
+No license has been selected yet. Add a license file before distributing the project under an open-source license.
